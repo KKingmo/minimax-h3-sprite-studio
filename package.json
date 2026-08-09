@@ -1,0 +1,16 @@
+{
+  "name": "minimax-h3-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MiniMax-H3 reference image and first/last frame video generator for localhost.",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "check": "node --check server.mjs && node --check lib/h3-contract.mjs && node --check public/app.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#101216" />
+    <title>MiniMax H3 Studio</title>
+    <link rel="stylesheet" href="/styles.css?v=3" />
+    <script type="module" src="/app.js?v=3"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="MiniMax H3 Studio 홈">
+        <span class="brand-mark" aria-hidden="true">H3</span>
+        <span>
+          <strong>MiniMax H3 Studio</strong>
+          <small>로컬 비디오 생성기</small>
+        </span>
+      </a>
+
+      <div class="topbar-actions">
+        <span class="connection-status" id="connection-status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="connection-label">서버 확인 중</span>
+        </span>
+        <button class="quiet-button" id="open-settings" type="button" aria-haspopup="dialog">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.37a1.7 1.7 0 0 0-1 .63 1.7 1.7 0 0 0-.38 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.56 19.3a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.63-1 1.7 1.7 0 0 0-1.1-.38H2v-4h.47A1.7 1.7 0 0 0 4.2 8.56a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.56 4.2a1.7 1.7 0 0 0 1-.63 1.7 1.7 0 0 0 .38-1.1V2h4v.47A1.7 1.7 0 0 0 15 4.2a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 8c.2.37.56.7 1 .9.24.12.5.18.77.18H22v4h-.47A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+          API 설정
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="composer panel" aria-labelledby="composer-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">MiniMax-H3 · Image to Video</p>
+            <h1 id="composer-title">영상 만들기</h1>
+          </div>
+          <span class="local-badge">127.0.0.1 전용</span>
+        </div>
+
+        <div class="mode-tabs" role="tablist" aria-label="참고 방식">
+          <button
+            class="mode-tab is-active"
+            id="reference-tab"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="reference-panel"
+            data-mode="reference-image"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 15 4-4 4 4 3-3 5 5"/><path d="M4 5h16v14H4z"/><path d="M15.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
+            참고 이미지
+          </button>
+          <button
+            class="mode-tab"
+            id="frames-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="frames-panel"
+            data-mode="frames"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 5v14M16 5v14"/></svg>
+            시작/종료 프레임
+          </button>
+        </div>
+
+        <div class="mode-panel" id="reference-panel" role="tabpanel" aria-labelledby="reference-tab">
+          <div class="field-heading">
+            <div>
+              <h2>참고 이미지</h2>
+              <p>인물, 사물, 장면이나 스타일을 최대 9장까지 참고할 수 있어.</p>
+            </div>
+            <span id="reference-count">0/9</span>
+          </div>
+          <div class="upload-grid" id="reference-grid">
+            <label class="upload-tile" for="reference-input" id="reference-dropzone">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              <strong>이미지 추가</strong>
+              <span>JPG · PNG · WEBP</span>
+            </label>
+          </div>
+          <input
+            class="visually-hidden"
+            id="reference-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+            multiple
+          />
+        </div>
+
+        <div class="mode-panel" id="frames-panel" role="tabpanel" aria-labelledby="frames-tab" hidden>
+          <div class="field-heading">
+            <div>
+              <h2>시작/종료 프레임</h2>
+              <p>한 장만 사용하거나 시작과 끝을 모두 지정할 수 있어.</p>
+            </div>
+            <button class="icon-text-button" id="swap-frames" type="button" disabled>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7-3 3 3 3M4 10h13M17 17l3-3-3-3M20 14H7"/></svg>
+              서로 바꾸기
+            </button>
+          </div>
+          <div class="frame-grid">
+            <label class="frame-slot" for="first-frame-input" id="first-frame-slot">
+              <span class="frame-label">시작 프레임</span>
+              <span class="frame-empty">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                이미지 선택
+              </span>
+            </label>
+            <div class="frame-arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+            </div>
+            <label class="frame-slot" for="last-frame-input" id="last-frame-slot">
+              <span class="frame-label">종료 프레임</span>
+              <span class="frame-empty">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                이미지 선택
+              </span>
+            </label>
+          </div>
+          <input class="visually-hidden" id="first-frame-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" />
+          <input class="visually-hidden" id="last-frame-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" />
+        </div>
+
+        <div class="prompt-field">
+          <label for="prompt">프롬프트</label>
+          <div class="textarea-shell">
+            <textarea
+              id="prompt"
+              maxlength="7000"
+              rows="5"
+              placeholder="캐릭터의 모습은 유지하고, 움직임과 카메라를 구체적으로 설명해 주세요."
+              required
+            ></textarea>
+            <span id="prompt-count">0/7000</span>
+          </div>
+        </div>
+
+        <section class="sprite-tool" aria-labelledby="sprite-title">
+          <div class="sprite-tool-heading">
+            <div>
+              <div class="sprite-title-row">
+                <h2 id="sprite-title">스프라이트 일관성</h2>
+                <span class="option-badge">선택</span>
+              </div>
+              <p>1:1 화면에서 캐릭터의 크기와 발 위치, 카메라 구도를 일정하게 유지하도록 프롬프트를 추가해.</p>
+            </div>
+            <label class="switch" for="sprite-toggle">
+              <input id="sprite-toggle" type="checkbox" role="switch" aria-describedby="sprite-limit-note" />
+              <span aria-hidden="true"></span>
+              <span class="visually-hidden">스프라이트 일관성 사용</span>
+            </label>
+          </div>
+
+          <div class="sprite-controls" id="sprite-controls" hidden>
+            <div class="sprite-settings-grid">
+              <fieldset class="setting">
+                <legend>캐릭터 높이</legend>
+                <div class="segmented" id="sprite-height-options" aria-label="캔버스 대비 캐릭터 높이"></div>
+              </fieldset>
+              <fieldset class="setting">
+                <legend>발 기준선</legend>
+                <div class="segmented" id="sprite-foot-options" aria-label="캔버스 대비 발 위치"></div>
+              </fieldset>
+            </div>
+            <div class="sprite-summary">
+              <strong id="sprite-summary-text">중앙 고정 · 높이 70% · 발 88%</strong>
+              <span>카메라 이동, 줌, 재구도, 신체 비율 변화를 억제해.</span>
+            </div>
+            <details class="sprite-prompt-details">
+              <summary>자동으로 추가되는 프롬프트 보기</summary>
+              <pre id="sprite-prompt-preview"></pre>
+            </details>
+          </div>
+          <p class="sprite-limit-note" id="sprite-limit-note">생성형 모델의 프롬프트 기반 제약이라 픽셀 단위의 완전한 고정은 보장하지 않아.</p>
+        </section>
+
+        <div class="settings-grid">
+          <fieldset class="setting setting-ratio">
+            <legend>비율</legend>
+            <div class="segmented" id="ratio-options" aria-label="영상 비율"></div>
+            <p class="setting-note" id="ratio-note">참고 이미지 모드의 출력 비율이야.</p>
+          </fieldset>
+
+          <fieldset class="setting setting-resolution">
+            <legend>해상도</legend>
+            <div class="segmented" id="resolution-options" aria-label="영상 해상도"></div>
+          </fieldset>
+
+          <fieldset class="setting setting-duration">
+            <legend>재생 시간</legend>
+            <div class="segmented duration-options" id="duration-options" aria-label="영상 재생 시간"></div>
+          </fieldset>
+        </div>
+
+        <div class="form-message" id="form-message" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="result panel" aria-labelledby="result-title">
+        <div class="panel-heading result-heading">
+          <div>
+            <p class="eyebrow">Result</p>
+            <h2 id="result-title">미리보기</h2>
+          </div>
+          <span class="result-status" id="result-status">준비됨</span>
+        </div>
+
+        <div class="preview" id="preview">
+          <div class="preview-empty" id="preview-empty">
+            <svg aria-hidden="true" viewBox="0 0 64 64"><path d="M13 20h38v30H13z"/><path d="m13 28 38-8M20 18l6 8M31 15l6 8M42 13l6 8"/><path d="m29 33 12 7-12 7Z"/></svg>
+            <strong>완성된 영상이 여기에 표시돼</strong>
+            <span>요청 후 상태를 자동으로 확인해.</span>
+          </div>
+          <video id="result-video" controls playsinline hidden></video>
+        </div>
+
+        <div class="result-summary">
+          <div class="cost-copy">
+            <span>예상 비용</span>
+            <strong id="estimated-cost">$0.78</strong>
+            <small id="cost-detail">2K · 6초 · 이미지 0장</small>
+          </div>
+          <button class="primary-button" id="generate-button" type="button">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2L12 3ZM19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z"/></svg>
+            영상 생성
+          </button>
+        </div>
+
+        <div class="active-task" id="active-task" hidden>
+          <div>
+            <span class="task-spinner" aria-hidden="true"></span>
+            <div>
+              <strong id="active-task-label">작업을 준비하고 있어</strong>
+              <small id="active-task-id"></small>
+            </div>
+          </div>
+          <a class="quiet-button download-button" id="download-button" href="#" hidden>MP4 다운로드</a>
+        </div>
+      </section>
+
+      <section class="history panel" aria-labelledby="history-title">
+        <div class="history-heading">
+          <div>
+            <p class="eyebrow">Current tab</p>
+            <h2 id="history-title">작업 기록</h2>
+          </div>
+          <p>새로고침하면 목록이 사라져.</p>
+        </div>
+        <div class="history-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">상태</th>
+                <th scope="col">방식</th>
+                <th scope="col">설정</th>
+                <th scope="col">예상 비용</th>
+                <th scope="col">작업 ID</th>
+                <th scope="col"><span class="visually-hidden">작업</span></th>
+              </tr>
+            </thead>
+            <tbody id="history-body">
+              <tr class="empty-row">
+                <td colspan="6">아직 생성한 작업이 없어.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Local only</p>
+            <h2 id="settings-title">API 설정</h2>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="설정 닫기">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+
+        <div class="env-key-notice" id="env-key-notice" hidden>
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <strong>환경변수 키가 설정되어 있어</strong>
+            <p>입력란을 비워 두면 서버의 <code>MINIMAX_API_KEY</code>를 사용해.</p>
+          </div>
+        </div>
+
+        <div class="key-field">
+          <label for="api-key">MiniMax API Key</label>
+          <span class="password-shell">
+            <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="eyJ... 또는 발급받은 API Key" />
+            <button id="toggle-key" type="button" aria-label="API 키 보이기">보기</button>
+          </span>
+        </div>
+        <p class="privacy-copy">키는 이 탭의 메모리에만 있으며 파일, 쿠키, 브라우저 저장소에 기록하지 않아.</p>
+        <menu>
+          <button class="quiet-button" value="cancel">취소</button>
+          <button class="primary-button compact" id="apply-key" value="default">적용</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>
