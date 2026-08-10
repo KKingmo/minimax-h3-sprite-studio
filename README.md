@@ -17,16 +17,19 @@ MiniMax-H3로 영상을 만들고 같은 로컬 GUI에서 투명 sprite atlas �
 ## 준비
 
 - Node.js 20 이상
-- pnpm
+- pnpm 10 (Corepack으로 활성화)
 - Python 3.10~3.13
 - MiniMax API 키와 인터넷 연결
 
 Node GUI에는 별도 npm 의존성이 없습니다. 스프라이트 엔진은 최초 한 번 설치합니다.
 
 ```bash
+corepack enable pnpm
 pnpm setup:sprite
 pnpm start
 ```
+
+`pnpm: command not found`가 나오면 새 터미널을 열거나 현재 터미널에서 `hash -r`을 실행한 뒤 다시 확인하세요.
 
 브라우저에서 [http://127.0.0.1:4317](http://127.0.0.1:4317)을 엽니다. macOS에서는 `start.command`를 더블 클릭해도 됩니다.
 
