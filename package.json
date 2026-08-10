@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "MiniMax-H3 reference image and first/last frame video generator for localhost.",
+  "description": "Local MiniMax-H3 video generation and sprite atlas export studio.",
   "scripts": {
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
-    "check": "node --check server.mjs && node --check lib/h3-contract.mjs && node --check public/app.js",
-    "test": "node --test"
+    "setup:sprite": "node scripts/setup-sprite.mjs",
+    "check": "node --check server.mjs && node --check lib/h3-contract.mjs && node --check lib/sprite-contract.mjs && node --check lib/sprite-workspace.mjs && node --check scripts/setup-sprite.mjs && node --check public/app.js",
+    "test": "node --test",
+    "test:sprite": "PYTHONPATH=sprite_engine .venv/bin/python -m unittest discover -s sprite_engine/tests -v"
   },
   "engines": {
     "node": ">=20"

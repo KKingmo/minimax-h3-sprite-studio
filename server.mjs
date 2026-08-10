@@ -11,10 +11,16 @@ import {
   buildH3Payload,
   publicConfig,
 } from "./lib/h3-contract.mjs";
+import { createSpriteWorkspace } from "./lib/sprite-workspace.mjs";
 
 const ROOT_DIR = fileURLToPath(new URL(".", import.meta.url));
 const DEFAULT_PUBLIC_DIR = join(ROOT_DIR, "public");
 const DEFAULT_API_BASE_URL = "https://api.minimax.io";
+const DEFAULT_WORKSPACE_DIR = join(ROOT_DIR, "workspace");
+const DEFAULT_PYTHON_PATH = process.platform === "win32"
+  ? join(ROOT_DIR, ".venv", "Scripts", "python.exe")
+  : join(ROOT_DIR, ".venv", "bin", "python");
+const DEFAULT_SPRITE_WORKER_PATH = join(ROOT_DIR, "sprite_engine", "worker.py");
 const STATIC_ROUTES = new Map([
   ["/", "index.html"],
   ["/index.html", "index.html"],
@@ -25,6 +31,14 @@ const MIME_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".png", "image/png"],
+  [".webp", "image/webp"],
+  [".gif", "image/gif"],
+  [".mp4", "video/mp4"],
+  [".mov", "video/quicktime"],
+  [".webm", "video/webm"],
+  [".zip", "application/zip"],
 ]);
 
 function sendJson(response, statusCode, body) {
@@ -128,14 +142,41 @@ function taskIdFromPath(pathname, suffix = "") {
   return pattern.exec(pathname)?.[1] ?? null;
 }
 
+function spriteJobRoute(pathname) {
+  const match = /^\/api\/sprite\/jobs\/([A-Za-z0-9_-]{8,96})(?:\/(.*))?$/.exec(pathname);
+  if (!match) return null;
+  return { jobId: match[1], suffix: match[2] ?? "" };
+}
+
+function contentLength(request) {
+  const value = Number(request.headers["content-length"]);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function sendFile(response, file, { download = false } = {}) {
+  response.writeHead(200, {
+    "Content-Type": MIME_TYPES.get(extname(file.path).toLowerCase()) ?? "application/octet-stream",
+    "Content-Length": file.size,
+    "Cache-Control": "private, no-store",
+    "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${String(file.name).replace(/["\\\r\n]/g, "-")}"`,
+  });
+  createReadStream(file.path).pipe(response);
+}
+
 export function createH3Server({
   fetchImpl = globalThis.fetch,
   apiBaseUrl = process.env.MINIMAX_API_BASE_URL || DEFAULT_API_BASE_URL,
   environmentKey = process.env.MINIMAX_API_KEY || "",
   publicDir = DEFAULT_PUBLIC_DIR,
+  spriteWorkspace = null,
 } = {}) {
   if (typeof fetchImpl !== "function") throw new TypeError("fetch implementation is required");
   const completedMedia = new Map();
+  const sprites = spriteWorkspace ?? createSpriteWorkspace({
+    rootDir: DEFAULT_WORKSPACE_DIR,
+    pythonPath: DEFAULT_PYTHON_PATH,
+    workerPath: DEFAULT_SPRITE_WORKER_PATH,
+  });
 
   const server = createServer(async (request, response) => {
     commonSecurityHeaders(response);
@@ -146,6 +187,90 @@ export function createH3Server({
 
       if (request.method === "GET" && pathname === "/api/config") {
         sendJson(response, 200, publicConfig({ envKeyConfigured: Boolean(environmentKey.trim()) }));
+        return;
+      }
+
+      if (request.method === "GET" && pathname === "/api/sprite/config") {
+        sendJson(response, 200, await sprites.config());
+        return;
+      }
+
+      if (request.method === "GET" && pathname === "/api/sprite/jobs") {
+        sendJson(response, 200, { jobs: await sprites.listJobs() });
+        return;
+      }
+
+      if (request.method === "DELETE" && pathname === "/api/sprite/jobs") {
+        await sprites.deleteAllJobs();
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
+      if (request.method === "POST" && pathname === "/api/sprite/jobs/upload") {
+        const encodedFilename = request.headers["x-video-filename"];
+        let filename;
+        try {
+          filename = decodeURIComponent(Array.isArray(encodedFilename) ? encodedFilename[0] : encodedFilename ?? "");
+        } catch {
+          const error = new Error("영상 파일 이름이 올바르지 않습니다.");
+          error.statusCode = 400;
+          throw error;
+        }
+        const job = await sprites.createJob({ type: "upload", filename });
+        try {
+          await sprites.writeVideo(job.id, request, { contentLength: contentLength(request) });
+          let inspected;
+          try {
+            inspected = await sprites.inspectJob(job.id);
+          } catch {
+            inspected = await sprites.getJob(job.id);
+          }
+          sendJson(response, 201, { job: inspected });
+        } catch (error) {
+          await sprites.deleteJob(job.id).catch(() => undefined);
+          throw error;
+        }
+        return;
+      }
+
+      if (request.method === "POST" && pathname === "/api/sprite/jobs/from-task") {
+        const input = await readJsonBody(request, 64 * 1024);
+        const taskId = String(input.taskId ?? "");
+        const mediaUrl = completedMedia.get(taskId);
+        if (!mediaUrl) {
+          const error = new H3ValidationError("완료된 MiniMax 영상을 찾을 수 없습니다. 작업 상태를 다시 확인해 주세요.");
+          error.statusCode = 404;
+          throw error;
+        }
+        const existing = await sprites.findByTaskId(taskId);
+        if (existing) {
+          sendJson(response, 200, { job: existing });
+          return;
+        }
+        const job = await sprites.createJob({
+          type: "minimax",
+          filename: `minimax-h3-${taskId}.mp4`,
+          taskId,
+          prompt: input.prompt,
+          generation: input.generation,
+        });
+        try {
+          const upstream = await fetchImpl(mediaUrl);
+          if (!upstream.ok || !upstream.body) throw new Error("생성된 MiniMax 영상을 로컬 작업 폴더에 연결하지 못했습니다.");
+          await sprites.writeVideo(job.id, Readable.fromWeb(upstream.body), {
+            contentLength: Number(upstream.headers.get("content-length")) || undefined,
+          });
+          let inspected;
+          try {
+            inspected = await sprites.inspectJob(job.id);
+          } catch {
+            inspected = await sprites.getJob(job.id);
+          }
+          sendJson(response, 201, { job: inspected });
+        } catch (error) {
+          await sprites.deleteJob(job.id).catch(() => undefined);
+          throw error;
+        }
         return;
       }
 
@@ -222,12 +347,46 @@ export function createH3Server({
         return;
       }
 
+      const spriteRoute = spriteJobRoute(pathname);
+      if (spriteRoute) {
+        const { jobId, suffix } = spriteRoute;
+        if (request.method === "GET" && !suffix) {
+          sendJson(response, 200, { job: await sprites.getJob(jobId) });
+          return;
+        }
+        if (request.method === "DELETE" && !suffix) {
+          await sprites.deleteJob(jobId);
+          sendJson(response, 200, { ok: true });
+          return;
+        }
+        if (request.method === "POST" && suffix === "extract") {
+          const input = await readJsonBody(request, 16 * 1024);
+          sendJson(response, 200, { job: await sprites.extract(jobId, input) });
+          return;
+        }
+        if (request.method === "POST" && suffix === "export") {
+          const input = await readJsonBody(request, 16 * 1024);
+          sendJson(response, 200, { job: await sprites.exportJob(jobId, input) });
+          return;
+        }
+        if (request.method === "GET" && suffix.startsWith("files/")) {
+          const relativePath = suffix.slice("files/".length).split("/").map(decodeURIComponent).join("/");
+          const file = await sprites.filePath(jobId, relativePath);
+          sendFile(response, file, { download: url.searchParams.get("download") === "1" });
+          return;
+        }
+      }
+
       if (request.method === "GET" && (await serveStatic(response, publicDir, pathname))) return;
 
       sendJson(response, 404, { error: { message: "경로를 찾을 수 없습니다.", status: 404 } });
     } catch (error) {
       if (error instanceof H3ValidationError) {
         sendJson(response, error.statusCode ?? 400, { error: { message: error.message, details: error.details } });
+        return;
+      }
+      if (Number.isInteger(error?.statusCode)) {
+        sendJson(response, error.statusCode, { error: { message: sanitizeMessage(error.message), status: error.statusCode } });
         return;
       }
       console.error("[minimax-h3-studio] request failed", sanitizeMessage(error?.message));
@@ -248,7 +407,7 @@ if (isMainModule()) {
   const host = "127.0.0.1";
   const server = createH3Server();
   server.listen(port, host, () => {
-    console.log(`MiniMax H3 Studio: http://${host}:${port}`);
+    console.log(`MiniMax H3 Sprite Studio: http://${host}:${port}`);
     console.log(process.env.MINIMAX_API_KEY ? "API key: environment variable configured" : "API key: enter it in the local website settings");
   });
 }

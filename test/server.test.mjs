@@ -163,3 +163,69 @@ test("arbitrary media URLs cannot be proxied", async () => {
     assert.equal(response.status, 404);
   });
 });
+
+test("a completed H3 task can be copied into a local sprite job", async () => {
+  const videoBytes = Buffer.from("generated-video");
+  const calls = [];
+  const spriteWorkspace = {
+    findByTaskId: async () => null,
+    createJob: async (input) => {
+      calls.push(["create", input]);
+      return { id: "sprite-job-123" };
+    },
+    writeVideo: async (id, stream) => {
+      const chunks = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      calls.push(["write", id, Buffer.concat(chunks)]);
+    },
+    inspectJob: async () => ({ id: "sprite-job-123", status: "video-ready", source: { type: "minimax" } }),
+    deleteJob: async () => undefined,
+  };
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/v2/query/video_generation/task-atlas")) {
+      return new Response(JSON.stringify({
+        task: { status: "succeeded", content: { url: "https://cdn.example/task-atlas.mp4" } },
+      }), { headers: { "content-type": "application/json" } });
+    }
+    if (url === "https://cdn.example/task-atlas.mp4") return new Response(videoBytes);
+    throw new Error(`unexpected URL: ${url}`);
+  };
+
+  await withServer({ fetchImpl, apiBaseUrl: "https://api.example", spriteWorkspace }, async (baseUrl) => {
+    const query = await fetch(`${baseUrl}/api/tasks/task-atlas`, { headers: { "x-minimax-api-key": "key" } });
+    assert.equal(query.status, 200);
+
+    const response = await fetch(`${baseUrl}/api/sprite/jobs/from-task`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ taskId: "task-atlas", prompt: "wave", generation: { resolution: "2K" } }),
+    });
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).job.id, "sprite-job-123");
+    assert.equal(calls[0][1].taskId, "task-atlas");
+    assert.deepEqual(calls[1][2], videoBytes);
+  });
+});
+
+test("direct sprite uploads decode a Unicode filename before validation", async () => {
+  let receivedFilename;
+  const spriteWorkspace = {
+    createJob: async ({ filename }) => {
+      receivedFilename = filename;
+      return { id: "sprite-upload-1" };
+    },
+    writeVideo: async () => undefined,
+    inspectJob: async () => ({ id: "sprite-upload-1", status: "video-ready" }),
+    deleteJob: async () => undefined,
+  };
+
+  await withServer({ spriteWorkspace }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/sprite/jobs/upload`, {
+      method: "POST",
+      headers: { "x-video-filename": encodeURIComponent("내 영상.mp4") },
+      body: Buffer.from("video"),
+    });
+    assert.equal(response.status, 201);
+    assert.equal(receivedFilename, "내 영상.mp4");
+  });
+});

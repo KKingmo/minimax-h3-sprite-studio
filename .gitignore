@@ -4,6 +4,16 @@
 !.env.example
 node_modules/
 coverage/
+.venv/
+workspace/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.gradio/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
 
 # Local credentials and signing material
 .npmrc

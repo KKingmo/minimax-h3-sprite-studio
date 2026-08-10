@@ -15,6 +15,12 @@ const state = {
   tasks: [],
   activeTaskId: null,
   pollControllers: new Map(),
+  atlas: {
+    config: null,
+    jobs: [],
+    activeJobId: null,
+    busy: false,
+  },
 };
 
 const elements = {
@@ -62,6 +68,42 @@ const elements = {
   activeTaskId: document.querySelector("#active-task-id"),
   downloadButton: document.querySelector("#download-button"),
   historyBody: document.querySelector("#history-body"),
+  spriteEngineStatus: document.querySelector("#sprite-engine-status"),
+  spriteEngineNote: document.querySelector("#sprite-engine-note"),
+  spriteVideoInput: document.querySelector("#sprite-video-input"),
+  spriteVideoEmpty: document.querySelector("#sprite-video-empty"),
+  spriteSourceVideo: document.querySelector("#sprite-source-video"),
+  clearSpriteSource: document.querySelector("#clear-sprite-source"),
+  spriteVideoMeta: document.querySelector("#sprite-video-meta"),
+  spriteFps: document.querySelector("#sprite-fps"),
+  spriteFpsValue: document.querySelector("#sprite-fps-value"),
+  spriteMaxFrames: document.querySelector("#sprite-max-frames"),
+  spriteMaxFramesValue: document.querySelector("#sprite-max-frames-value"),
+  spriteModel: document.querySelector("#sprite-model"),
+  spriteModelNote: document.querySelector("#sprite-model-note"),
+  spriteRefineEdges: document.querySelector("#sprite-refine-edges"),
+  spriteCellSize: document.querySelector("#sprite-cell-size"),
+  spriteColumns: document.querySelector("#sprite-columns"),
+  spriteColumnsValue: document.querySelector("#sprite-columns-value"),
+  spriteWebpQuality: document.querySelector("#sprite-webp-quality"),
+  spriteWebpQualityValue: document.querySelector("#sprite-webp-quality-value"),
+  spriteGifColors: document.querySelector("#sprite-gif-colors"),
+  extractSpriteButton: document.querySelector("#extract-sprite-button"),
+  exportSpriteButton: document.querySelector("#export-sprite-button"),
+  spriteProcessStatus: document.querySelector("#sprite-process-status"),
+  spriteFrameSummary: document.querySelector("#sprite-frame-summary"),
+  spritePreviewGif: document.querySelector("#sprite-preview-gif"),
+  toggleSpriteMotion: document.querySelector("#toggle-sprite-motion"),
+  spritePreviewEmpty: document.querySelector("#sprite-preview-empty"),
+  spriteFrameStrip: document.querySelector("#sprite-frame-strip"),
+  spriteResultSummary: document.querySelector("#sprite-result-summary"),
+  spriteAtlasPreview: document.querySelector("#sprite-atlas-preview"),
+  spriteWebpPreview: document.querySelector("#sprite-webp-preview"),
+  spriteGifPreview: document.querySelector("#sprite-gif-preview"),
+  spritePreviewToggles: [...document.querySelectorAll("[data-preview-target]")],
+  spriteDownloads: document.querySelector("#sprite-downloads"),
+  spriteHistoryBody: document.querySelector("#sprite-history-body"),
+  clearSpriteJobs: document.querySelector("#clear-sprite-jobs"),
   toast: document.querySelector("#toast"),
 };
 
@@ -78,6 +120,18 @@ const MODE_LABELS = {
   "reference-image": "참고 이미지",
   frames: "시작/종료 프레임",
 };
+
+const SPRITE_STATUS_LABELS = {
+  "awaiting-video": "영상 준비 중",
+  "video-ready": "영상 준비됨",
+  extracting: "프레임 추출 중",
+  "frames-ready": "프레임 확인",
+  exporting: "atlas 생성 중",
+  complete: "완료",
+  error: "확인 필요",
+};
+
+const EMPTY_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
 let toastTimer;
 
@@ -457,6 +511,414 @@ async function requestJson(url, options = {}) {
   return body;
 }
 
+function formatFileSize(bytes) {
+  const value = Number(bytes) || 0;
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(2)} GB`;
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+}
+
+function activeSpriteJob() {
+  return state.atlas.jobs.find((job) => job.id === state.atlas.activeJobId) ?? null;
+}
+
+function upsertSpriteJob(job) {
+  const index = state.atlas.jobs.findIndex((item) => item.id === job.id);
+  if (index >= 0) state.atlas.jobs[index] = job;
+  else state.atlas.jobs.unshift(job);
+  state.atlas.jobs.sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
+  state.atlas.activeJobId = job.id;
+}
+
+function updateSpriteRangeLabels() {
+  elements.spriteFpsValue.textContent = elements.spriteFps.value;
+  elements.spriteMaxFramesValue.textContent = elements.spriteMaxFrames.value;
+  elements.spriteColumnsValue.textContent = elements.spriteColumns.value;
+  elements.spriteWebpQualityValue.textContent = elements.spriteWebpQuality.value;
+}
+
+function updateSpriteModelNote() {
+  const model = state.atlas.config?.models.find((item) => item.name === elements.spriteModel.value);
+  elements.spriteModelNote.textContent = model?.note ?? "모델을 선택해 주세요.";
+}
+
+function spriteSettings() {
+  return {
+    targetFps: Number(elements.spriteFps.value),
+    maxFrames: Number(elements.spriteMaxFrames.value),
+    modelName: elements.spriteModel.value,
+    refineEdges: elements.spriteRefineEdges.checked,
+    cellSize: Number(elements.spriteCellSize.value),
+    columns: Number(elements.spriteColumns.value),
+    webpQuality: Number(elements.spriteWebpQuality.value),
+    gifColors: Number(elements.spriteGifColors.value),
+  };
+}
+
+function applySpriteSettings(settings = {}) {
+  const defaults = state.atlas.config?.defaults ?? {};
+  elements.spriteFps.value = settings.targetFps ?? defaults.targetFps ?? 15;
+  elements.spriteMaxFrames.value = settings.maxFrames ?? defaults.maxFrames ?? 120;
+  elements.spriteModel.value = settings.modelName ?? defaults.modelName ?? "빠르게 · 일반 사진";
+  elements.spriteRefineEdges.checked = settings.refineEdges ?? defaults.refineEdges ?? true;
+  elements.spriteCellSize.value = settings.cellSize ?? defaults.cellSize ?? 256;
+  elements.spriteColumns.value = settings.columns ?? defaults.columns ?? 10;
+  elements.spriteWebpQuality.value = settings.webpQuality ?? defaults.webpQuality ?? 80;
+  elements.spriteGifColors.value = settings.gifColors ?? defaults.gifColors ?? 128;
+  updateSpriteRangeLabels();
+  updateSpriteModelNote();
+}
+
+function renderSpriteConfig() {
+  const config = state.atlas.config;
+  if (!config) return;
+
+  elements.spriteModel.replaceChildren(...config.models.map((model) => createElement("option", {
+    text: model.name,
+    attributes: { value: model.name },
+  })));
+  elements.spriteCellSize.replaceChildren(...config.limits.cellSizes.map((size) => createElement("option", {
+    text: `${size}px`,
+    attributes: { value: size },
+  })));
+  applySpriteSettings();
+
+  elements.spriteEngineStatus.textContent = config.installed ? "엔진 준비됨" : "설치 필요";
+  elements.spriteEngineStatus.classList.toggle("is-ready", config.installed);
+  elements.spriteEngineNote.textContent = config.installed
+    ? "BiRefNet 모델은 처음 선택할 때 고정된 Hugging Face revision에서 내려받아 실행합니다."
+    : `터미널에서 ${config.setupCommand}를 최초 한 번 실행해 주세요.`;
+}
+
+function resetSpriteMedia() {
+  elements.spriteVideoEmpty.hidden = false;
+  elements.spriteSourceVideo.hidden = true;
+  elements.spriteSourceVideo.removeAttribute("src");
+  elements.spriteSourceVideo.load();
+  elements.spriteVideoMeta.textContent = "MP4, MOV, WebM · 최대 1GB";
+
+  elements.spritePreviewGif.hidden = true;
+  elements.spritePreviewGif.src = EMPTY_IMAGE;
+  delete elements.spritePreviewGif.dataset.previewUrl;
+  elements.toggleSpriteMotion.disabled = true;
+  elements.toggleSpriteMotion.textContent = "미리보기 재생";
+  elements.spritePreviewEmpty.hidden = false;
+  elements.spritePreviewEmpty.textContent = "아직 미리보기가 없습니다.";
+  elements.spriteFrameSummary.textContent = "프레임을 펼치면 움직임과 간격을 확인할 수 있습니다.";
+  elements.spriteFrameStrip.replaceChildren(createElement("p", { text: "추출된 프레임이 여기에 표시됩니다." }));
+
+  for (const image of [elements.spriteAtlasPreview, elements.spriteWebpPreview, elements.spriteGifPreview]) {
+    image.hidden = true;
+    image.src = EMPTY_IMAGE;
+    image.nextElementSibling.hidden = false;
+  }
+  for (const button of elements.spritePreviewToggles) {
+    button.disabled = true;
+    button.textContent = "미리보기 재생";
+  }
+  elements.spriteResultSummary.textContent = "atlas를 만들면 투명 기준본과 미리보기를 한곳에서 내려받을 수 있습니다.";
+  elements.spriteDownloads.replaceChildren();
+}
+
+function showResultImage(image, url) {
+  if (!url) return;
+  image.src = `${url}?v=${encodeURIComponent(activeSpriteJob()?.updatedAt ?? "1")}`;
+  image.hidden = false;
+  image.nextElementSibling.hidden = true;
+}
+
+function configureAnimatedPreview(image, url, button, updatedAt) {
+  if (!url) return;
+  image.dataset.previewUrl = `${url}?v=${encodeURIComponent(updatedAt ?? "1")}`;
+  button.disabled = false;
+  image.nextElementSibling.textContent = "재생 버튼을 누르면 반복 미리보기가 시작됩니다.";
+}
+
+function toggleAnimatedPreview(image, button) {
+  const url = image.dataset.previewUrl;
+  if (!url) return;
+  if (image.hidden) {
+    image.src = url;
+    image.hidden = false;
+    image.nextElementSibling.hidden = true;
+    button.textContent = "미리보기 정지";
+  } else {
+    image.hidden = true;
+    image.src = EMPTY_IMAGE;
+    image.nextElementSibling.hidden = false;
+    button.textContent = "미리보기 재생";
+  }
+}
+
+function renderActiveSpriteJob({ preserveSettings = false } = {}) {
+  const job = activeSpriteJob();
+  resetSpriteMedia();
+
+  if (!job) {
+    elements.clearSpriteSource.disabled = true;
+    elements.extractSpriteButton.disabled = true;
+    elements.exportSpriteButton.disabled = true;
+    elements.spriteProcessStatus.textContent = "영상을 연결하면 프레임 추출을 시작할 수 있습니다.";
+    return;
+  }
+
+  if (!preserveSettings) applySpriteSettings(job.spriteSettings ?? {});
+  elements.clearSpriteSource.disabled = state.atlas.busy;
+  if (job.source?.videoUrl) {
+    elements.spriteVideoEmpty.hidden = true;
+    elements.spriteSourceVideo.src = job.source.videoUrl;
+    elements.spriteSourceVideo.hidden = false;
+  }
+  const info = job.videoInfo;
+  elements.spriteVideoMeta.textContent = info
+    ? `${job.source.name} · ${info.width}×${info.height}px · ${Number(info.fps).toFixed(2)} FPS · ${Number(info.durationSeconds).toFixed(2)}초 · ${formatFileSize(info.fileBytes)}`
+    : `${job.source.name} · ${formatFileSize(job.source.bytes)} · 영상 정보는 프레임 추출 시 확인`;
+
+  const installed = Boolean(state.atlas.config?.installed);
+  const canExtract = installed && Boolean(job.source?.videoUrl) && !state.atlas.busy && !["extracting", "exporting"].includes(job.status);
+  const canExport = installed && Boolean(job.extraction) && !job.extraction.cleaned && !state.atlas.busy && !["extracting", "exporting"].includes(job.status);
+  elements.extractSpriteButton.disabled = !canExtract;
+  elements.exportSpriteButton.disabled = !canExport;
+  elements.spriteProcessStatus.textContent = state.atlas.busy
+    ? (job.status === "exporting" ? "BiRefNet 배경 제거와 atlas 패키징을 진행하고 있습니다. 이 작업은 몇 분 걸릴 수 있습니다." : "영상 프레임과 GIF 미리보기를 준비하고 있습니다.")
+    : job.error?.message || {
+      "video-ready": "영상이 연결됐습니다. 설정을 확인하고 프레임 펼쳐보기를 눌러 주세요.",
+      "frames-ready": "프레임을 확인했습니다. 설정을 확인하고 atlas 생성을 시작하세요.",
+      complete: "최종 atlas 패키지가 준비됐습니다.",
+      error: "문제를 확인한 뒤 같은 단계를 다시 실행할 수 있습니다.",
+    }[job.status] || SPRITE_STATUS_LABELS[job.status] || "작업을 준비하고 있습니다.";
+
+  if (job.extraction) {
+    elements.spriteFrameSummary.textContent = `${job.extraction.frameCount ?? job.extraction.frameUrls?.length ?? 0}프레임 · ${Number(job.extraction.sampleFps).toFixed(2)} FPS · 약 ${Number(job.extraction.sampledDurationSeconds).toFixed(2)}초`;
+    if (job.extraction.previewUrl) {
+      elements.spritePreviewGif.dataset.previewUrl = `${job.extraction.previewUrl}?v=${encodeURIComponent(job.updatedAt)}`;
+      elements.toggleSpriteMotion.disabled = false;
+      elements.spritePreviewEmpty.textContent = "재생 버튼을 누르면 반복 미리보기가 시작됩니다.";
+    }
+    if (job.extraction.frameUrls?.length) {
+      const fragment = document.createDocumentFragment();
+      job.extraction.frameUrls.forEach((url, index) => {
+        const figure = document.createElement("figure");
+        const image = createElement("img", { attributes: { src: `${url}?v=${encodeURIComponent(job.updatedAt)}`, alt: `추출 프레임 ${index + 1}`, loading: "lazy" } });
+        const caption = createElement("figcaption", { text: `${index + 1} · ${Number(job.extraction.frameTimes[index]).toFixed(2)}s` });
+        figure.append(image, caption);
+        fragment.append(figure);
+      });
+      elements.spriteFrameStrip.replaceChildren(fragment);
+    }
+  }
+
+  if (job.result?.fileUrls) {
+    const urls = job.result.fileUrls;
+    showResultImage(elements.spriteAtlasPreview, urls["sprite-atlas.webp"]);
+    configureAnimatedPreview(elements.spriteWebpPreview, urls["sprite-animation.webp"], elements.spritePreviewToggles[0], job.updatedAt);
+    configureAnimatedPreview(elements.spriteGifPreview, urls["sprite-animation.gif"], elements.spritePreviewToggles[1], job.updatedAt);
+    elements.spriteResultSummary.textContent = `${job.result.frameCount}프레임 · 셀 ${job.result.frameSize.join("×")}px · atlas ${job.result.atlasSize.join("×")}px · ${job.result.columns}열 × ${job.result.rows}행 · ${job.result.deviceName}`;
+    const order = [
+      "sprite-animation-package.zip",
+      "sprite-atlas.webp",
+      "sprite-atlas.png",
+      "sprite-manifest.json",
+      "sprite-animation.webp",
+      "sprite-animation.gif",
+    ];
+    elements.spriteDownloads.replaceChildren(...order.filter((name) => urls[name]).map((name) => createElement("a", {
+      className: name.endsWith(".zip") ? "primary-button compact" : "quiet-button",
+      text: `${name}${job.result.fileSizes?.[name] ? ` · ${formatFileSize(job.result.fileSizes[name])}` : ""}`,
+      attributes: { href: `${urls[name]}?download=1`, download: name },
+    })));
+  }
+}
+
+function renderSpriteHistory() {
+  elements.clearSpriteJobs.disabled = state.atlas.jobs.length === 0 || state.atlas.busy;
+  if (state.atlas.jobs.length === 0) {
+    const row = createElement("tr", { className: "empty-row" });
+    row.append(createElement("td", { text: "아직 연결한 영상이 없습니다.", attributes: { colspan: "5" } }));
+    elements.spriteHistoryBody.replaceChildren(row);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const job of state.atlas.jobs) {
+    const row = document.createElement("tr");
+    const status = document.createElement("td");
+    status.append(createElement("span", { className: `history-status ${job.status}`, text: SPRITE_STATUS_LABELS[job.status] ?? job.status }));
+    const source = createElement("td", { text: job.source.type === "minimax" ? "MiniMax H3" : "로컬 영상" });
+    const settings = job.spriteSettings
+      ? `${job.spriteSettings.targetFps ?? 15} FPS · ${job.spriteSettings.cellSize ?? 256}px · ${job.spriteSettings.columns ?? 10}열`
+      : "설정 전";
+    const settingsCell = createElement("td", { text: settings });
+    const id = createElement("td", { className: "history-task-id", text: job.id });
+    const actions = document.createElement("td");
+    const view = createElement("button", { className: "table-action", text: "열기", attributes: { type: "button" } });
+    view.addEventListener("click", () => {
+      state.atlas.activeJobId = job.id;
+      renderActiveSpriteJob();
+      document.querySelector("#sprite-workbench-title").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    const remove = createElement("button", { className: "table-action danger", text: "삭제", attributes: { type: "button" } });
+    remove.disabled = state.atlas.busy;
+    remove.addEventListener("click", () => void deleteSpriteJob(job.id));
+    actions.append(view, remove);
+    row.append(status, source, settingsCell, id, actions);
+    fragment.append(row);
+  }
+  elements.spriteHistoryBody.replaceChildren(fragment);
+}
+
+function renderSpriteWorkspace(options) {
+  renderActiveSpriteJob(options);
+  renderSpriteHistory();
+}
+
+async function loadSpriteJobs() {
+  const body = await requestJson("/api/sprite/jobs");
+  state.atlas.jobs = body.jobs ?? [];
+  if (state.atlas.activeJobId && !state.atlas.jobs.some((job) => job.id === state.atlas.activeJobId)) {
+    state.atlas.activeJobId = null;
+  }
+  if (!state.atlas.activeJobId && state.atlas.jobs.length) state.atlas.activeJobId = state.atlas.jobs[0].id;
+  renderSpriteWorkspace();
+}
+
+async function connectTaskToSprite(task) {
+  if (task.spriteConnected) return;
+  const existing = state.atlas.jobs.find((job) => job.source?.taskId === task.id);
+  if (existing) {
+    task.spriteConnected = true;
+    state.atlas.activeJobId = existing.id;
+    renderSpriteWorkspace();
+    return;
+  }
+  try {
+    const body = await requestJson("/api/sprite/jobs/from-task", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: task.id,
+        prompt: task.prompt,
+        generation: {
+          mode: task.mode,
+          resolution: task.resolution,
+          duration: task.duration,
+          ratio: task.ratio,
+          imageCount: task.imageCount,
+        },
+      }),
+    });
+    task.spriteConnected = true;
+    upsertSpriteJob(body.job);
+    renderSpriteWorkspace();
+    showToast("완성된 MP4를 스프라이트 단계에 연결했습니다.");
+  } catch (error) {
+    showToast(`영상은 완성됐지만 스프라이트 연결에 실패했습니다: ${error.message}`);
+  }
+}
+
+async function uploadSpriteVideo(file) {
+  if (!file) return;
+  const maxBytes = state.atlas.config?.limits.maxVideoBytes ?? 1024 ** 3;
+  if (file.size > maxBytes) {
+    showToast("영상은 1GB 이하 파일만 사용할 수 있습니다.");
+    return;
+  }
+  state.atlas.busy = true;
+  elements.spriteProcessStatus.textContent = "로컬 영상을 작업 폴더에 연결하고 있습니다.";
+  renderSpriteHistory();
+  try {
+    const response = await fetch("/api/sprite/jobs/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "X-Video-Filename": encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || `업로드에 실패했습니다. (${response.status})`);
+    upsertSpriteJob(body.job);
+    showToast("로컬 영상을 스프라이트 단계에 연결했습니다.");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.atlas.busy = false;
+    renderSpriteWorkspace();
+  }
+}
+
+async function extractSpriteFrames() {
+  const job = activeSpriteJob();
+  if (!job) return;
+  state.atlas.busy = true;
+  job.status = "extracting";
+  renderSpriteWorkspace({ preserveSettings: true });
+  try {
+    const body = await requestJson(`/api/sprite/jobs/${encodeURIComponent(job.id)}/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(spriteSettings()),
+    });
+    upsertSpriteJob(body.job);
+    showToast("프레임과 움직임 미리보기를 준비했습니다.");
+  } catch (error) {
+    showToast(error.message);
+    await loadSpriteJobs().catch(() => undefined);
+  } finally {
+    state.atlas.busy = false;
+    renderSpriteWorkspace({ preserveSettings: true });
+  }
+}
+
+async function exportSpriteAtlas() {
+  const job = activeSpriteJob();
+  if (!job) return;
+  state.atlas.busy = true;
+  job.status = "exporting";
+  renderSpriteWorkspace({ preserveSettings: true });
+  try {
+    const body = await requestJson(`/api/sprite/jobs/${encodeURIComponent(job.id)}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(spriteSettings()),
+    });
+    upsertSpriteJob(body.job);
+    showToast("투명 sprite atlas 패키지를 완성했습니다.");
+  } catch (error) {
+    showToast(error.message);
+    await loadSpriteJobs().catch(() => undefined);
+  } finally {
+    state.atlas.busy = false;
+    renderSpriteWorkspace({ preserveSettings: true });
+  }
+}
+
+async function deleteSpriteJob(jobId) {
+  const job = state.atlas.jobs.find((item) => item.id === jobId);
+  if (!job || !window.confirm(`${job.source.name} 작업과 로컬 결과 파일을 삭제할까요?`)) return;
+  try {
+    await requestJson(`/api/sprite/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" });
+    state.atlas.jobs = state.atlas.jobs.filter((item) => item.id !== jobId);
+    if (state.atlas.activeJobId === jobId) state.atlas.activeJobId = state.atlas.jobs[0]?.id ?? null;
+    renderSpriteWorkspace();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function clearAllSpriteJobs() {
+  if (!state.atlas.jobs.length || !window.confirm("모든 로컬 스프라이트 작업과 결과 파일을 삭제할까요?")) return;
+  try {
+    await requestJson("/api/sprite/jobs", { method: "DELETE" });
+    state.atlas.jobs = [];
+    state.atlas.activeJobId = null;
+    renderSpriteWorkspace();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function generationInput() {
   const prompt = elements.prompt.value.trim();
   if (!prompt) throw new Error("프롬프트를 입력해 주세요.");
@@ -623,7 +1085,10 @@ async function pollTask(taskId) {
       if (state.activeTaskId === taskId) selectTask(taskId);
 
       if (["succeeded", "failed", "cancelled"].includes(task.status)) {
-        if (task.status === "succeeded") showToast("영상 생성이 완료됐어.");
+        if (task.status === "succeeded") {
+          showToast("영상 생성이 완료됐어.");
+          await connectTaskToSprite(task);
+        }
         return;
       }
 
@@ -718,6 +1183,26 @@ function bindEvents() {
   elements.generateButton.addEventListener("click", generateVideo);
   bindDropzone();
 
+  elements.spriteVideoInput.addEventListener("change", (event) => {
+    void uploadSpriteVideo(event.target.files[0]);
+    event.target.value = "";
+  });
+  elements.clearSpriteSource.addEventListener("click", () => {
+    state.atlas.activeJobId = null;
+    renderSpriteWorkspace();
+  });
+  for (const range of [elements.spriteFps, elements.spriteMaxFrames, elements.spriteColumns, elements.spriteWebpQuality]) {
+    range.addEventListener("input", updateSpriteRangeLabels);
+  }
+  elements.spriteModel.addEventListener("change", updateSpriteModelNote);
+  elements.extractSpriteButton.addEventListener("click", () => void extractSpriteFrames());
+  elements.exportSpriteButton.addEventListener("click", () => void exportSpriteAtlas());
+  elements.clearSpriteJobs.addEventListener("click", () => void clearAllSpriteJobs());
+  elements.toggleSpriteMotion.addEventListener("click", () => toggleAnimatedPreview(elements.spritePreviewGif, elements.toggleSpriteMotion));
+  for (const button of elements.spritePreviewToggles) {
+    button.addEventListener("click", () => toggleAnimatedPreview(document.querySelector(`#${button.dataset.previewTarget}`), button));
+  }
+
   elements.openSettings.addEventListener("click", () => {
     elements.apiKey.value = state.apiKey;
     elements.settingsDialog.showModal();
@@ -769,6 +1254,16 @@ async function initialize() {
     updateCost();
     updatePromptCount();
     setMode(state.mode);
+
+    try {
+      state.atlas.config = await requestJson("/api/sprite/config");
+      renderSpriteConfig();
+      await loadSpriteJobs();
+    } catch (spriteError) {
+      elements.spriteEngineStatus.textContent = "엔진 연결 실패";
+      elements.spriteEngineNote.textContent = spriteError.message;
+      renderSpriteWorkspace();
+    }
   } catch (error) {
     elements.connectionLabel.textContent = "서버 연결 실패";
     setFormMessage(`로컬 서버에 연결하지 못했습니다: ${error.message}`);

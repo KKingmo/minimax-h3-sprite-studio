@@ -1,15 +1,15 @@
-# MiniMax H3 Studio Design
+# MiniMax H3 Sprite Studio Design
 
 ## Summary
 
-Create a small local website at `/Users/kingmo/Desktop/kkingmo-work/minimax-h3-studio` for submitting `MiniMax-H3` video-generation requests without manually assembling API JSON.
+Create a local website for submitting `MiniMax-H3` video-generation requests and turning the resulting MP4 into a transparent sprite atlas package without switching tools.
 
 The interface exposes the two reference workflows supported by this tool:
 
 1. Reference image generation using `role=reference_image`.
 2. First and/or last frame generation using `role=first_frame` and `role=last_frame`.
 
-It deliberately excludes reference video, reference audio, a separate character-reference mode, and the broad “omni reference” label. The public H3 API does not expose image-reference and character-reference as separate roles.
+It deliberately excludes reference video, reference audio, a separate character-reference mode, and the broad “omni reference” label. The public H3 API does not expose image-reference and character-reference as separate roles. A local MP4, MOV, or WebM can still enter the sprite stage directly; it is not sent as an H3 reference.
 
 ## Goals
 
@@ -21,6 +21,9 @@ It deliberately excludes reference video, reference audio, a separate character-
 - Show the estimated request cost before submission.
 - Keep the API key out of source files and persistent browser storage.
 - Keep the studio isolated from unrelated projects.
+- Connect a completed H3 MP4 to a manual frame-review step.
+- Remove backgrounds locally and export atlas PNG/WebP, manifest, Animated WebP, GIF, and ZIP.
+- Recover local sprite jobs after a page or server restart.
 
 ## Non-goals
 
@@ -31,17 +34,28 @@ It deliberately excludes reference video, reference audio, a separate character-
 - No 768P-to-2K regeneration workflow.
 - No user accounts, database, cloud deployment, or shared task history.
 - No automatic paid request during development or verification.
+- No automatic frame extraction or background removal after H3 completes.
+- No database, cloud job storage, or Gradio UI. `.gradio/`, `.venv/`, `workspace/`, common model weight files, and generated user outputs stay outside Git.
 
 ## Technical Approach
 
-Use a zero-dependency Node.js application:
+Use a zero-dependency Node.js GUI and a project-local Python processing engine:
 
 - `server.mjs`: serves static files and proxies MiniMax API requests.
 - `lib/h3-contract.mjs`: pure request validation, MiniMax payload construction, and cost calculation.
 - `public/index.html`: semantic one-page interface.
 - `public/styles.css`: responsive dark tool interface.
 - `public/app.js`: form state, file validation, request construction, polling, preview, download, and session-only history.
+- `lib/sprite-contract.mjs`: bounded sprite settings and pinned public model metadata.
+- `lib/sprite-workspace.mjs`: local job manifests, file allowlisting, cleanup policy, and serialized Python work.
+- `sprite_engine/worker.py`: JSON bridge for video inspection, frame extraction, BiRefNet processing, and exports.
 - Node's built-in test runner for request-contract and validation tests.
+
+The one-page interface puts the sprite workbench below H3 generation. H3 completion copies only its MP4 into a local sprite job. The user then explicitly starts frame extraction and, after review, background removal and packaging. Direct local upload uses the same job contract.
+
+Sprite jobs live under `workspace/jobs/<job-id>/job.json`. API keys, reference images, and Data URLs never enter that manifest. On successful export, intermediate source and cutout frames are removed after transparent frames are placed in the ZIP; failed intermediates remain for diagnosis. A directly uploaded source video is removed after successful export, while an H3-generated MP4 is retained.
+
+BiRefNet repositories load through pinned revisions with `trust_remote_code=True`. This first-use download and remote-code boundary is disclosed in the GUI and README. The official support target is macOS Apple Silicon; CUDA and CPU paths remain available but Windows and Linux are unverified.
 
 The local proxy avoids browser CORS limitations and prevents the browser from calling MiniMax directly. The server accepts an API key from `MINIMAX_API_KEY`; when that variable is absent, the user can enter a key in a password field. A UI-entered key is sent only to localhost for the current request and is never written to disk, local storage, session storage, cookies, logs, or generated task history.
 
@@ -60,7 +74,8 @@ The page uses a quiet dark neutral palette. It is a tool surface rather than a m
 - Compact generation settings for ratio, resolution, and duration.
 - Cost summary and primary `영상 생성` action.
 - Result region showing request state, task ID, elapsed state, video preview, and MP4 download.
-- Current-tab task history only; refreshing the page clears it.
+- Sprite workbench for local video selection, explicit frame extraction and review, BiRefNet export settings, previews, and downloads.
+- H3 request history belongs to the current tab and refreshing clears it; sprite job history is restored from local manifests until the user deletes it.
 
 ### Reference image mode
 

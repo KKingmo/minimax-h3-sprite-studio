@@ -1,0 +1,17 @@
+# BiRefNet runtime requirements. The GUI is served by Node and does not use Gradio.
+torch>=2.5,<3
+torchvision>=0.20,<1
+transformers>=4.46,<5
+huggingface-hub>=0.25
+accelerate>=1.0,<2
+timm>=1.0,<2
+einops>=0.8,<1
+kornia>=0.7,<1
+scipy>=1.13,<2
+scikit-image>=0.24,<1
+numpy>=1.26,<2; python_version < "3.13"
+# NumPy 1.x has no Python 3.13 wheel. BiRefNet's runtime path used here is
+# compatible with current NumPy, so use 2.x only on Python 3.13.
+numpy>=2,<3; python_version >= "3.13"
+opencv-python-headless>=4.10,<5
+Pillow>=10.4,<13

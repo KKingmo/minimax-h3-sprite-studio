@@ -1,93 +1,107 @@
-# MiniMax H3 Studio
+# MiniMax H3 Sprite Studio
 
-MiniMax-H3의 두 가지 이미지 기반 생성 기능을 로컬 웹 UI에서 사용하는 작은 도구입니다.
+MiniMax-H3로 영상을 만들고 같은 로컬 GUI에서 투명 sprite atlas 패키지로 내보내는 오픈소스 도구입니다. MiniMax 공식 제품은 아닙니다.
 
-- `reference_image`: 참고 이미지 1~9장
-- `first_frame` / `last_frame`: 시작 프레임만, 종료 프레임만, 또는 둘 다
-- 기본 설정: `2K`, `1:1`, `6초`
-- 선택형 `스프라이트 일관성`: 정지 카메라, 중앙 정렬, 캐릭터 높이, 발 기준선 제약 자동 추가
-- 작업 상태 자동 조회, 영상 미리보기, MP4 다운로드
-- 외부 런타임 의존성 없음
+## 제공 기능
 
-## 실행
+- 참고 이미지 1~9장 또는 시작/종료 프레임으로 MiniMax-H3 영상 생성
+- 선택형 스프라이트 구도 제약과 예상 비용 표시
+- 생성 상태 조회, MP4 미리보기와 다운로드
+- 생성된 MP4 자동 연결 또는 로컬 MP4·MOV·WebM 직접 선택
+- 프레임 추출과 GIF 움직임 확인
+- BiRefNet 배경 제거 후 atlas PNG/WebP, manifest, Animated WebP, GIF, ZIP 생성
+- `workspace/jobs/<job-id>/job.json` 기반 로컬 작업 복구
 
-Node.js 20 이상과 `pnpm`이 필요합니다. 설치할 패키지는 없습니다.
+공식 지원 환경은 macOS Apple Silicon입니다. CUDA와 CPU 실행 경로는 유지하지만 Windows와 Linux는 아직 검증하지 않았습니다.
+
+## 준비
+
+- Node.js 20 이상
+- pnpm
+- Python 3.10~3.13
+- MiniMax API 키와 인터넷 연결
+
+Node GUI에는 별도 npm 의존성이 없습니다. 스프라이트 엔진은 최초 한 번 설치합니다.
 
 ```bash
-cd /Users/kingmo/Desktop/kkingmo-work/minimax-h3-studio
+pnpm setup:sprite
 pnpm start
 ```
 
-브라우저에서 [http://127.0.0.1:4317](http://127.0.0.1:4317)을 엽니다.
+브라우저에서 [http://127.0.0.1:4317](http://127.0.0.1:4317)을 엽니다. macOS에서는 `start.command`를 더블 클릭해도 됩니다.
 
-macOS에서는 `start.command`를 더블 클릭해 서버와 브라우저를 한 번에 열 수도 있습니다. 처음 실행할 때 macOS 보안 확인이 표시되면 터미널에서 위 명령을 사용하세요.
+`pnpm setup:sprite`는 저장소의 `.venv`에 Python 패키지만 설치합니다. BiRefNet 모델 파일과 원격 코드는 GUI에서 모델을 처음 사용할 때 `workspace/model-cache/`로 내려받습니다. Node GUI는 Gradio를 사용하지 않습니다. `.gradio/`, `.venv/`, `workspace/`의 사용자 작업물·결과물과 일반적인 모델 가중치 파일(`*.ckpt`, `*.pt`, `*.pth`, `*.safetensors`)은 Git에 포함되지 않습니다.
 
 ## API 키
 
-가장 간단한 방법은 웹 화면 우측 상단의 `API 설정`에서 키를 입력하는 것입니다. 이 키는 현재 탭의 메모리에만 있고 파일, 쿠키, `localStorage`, `sessionStorage`에 저장되지 않습니다.
-
-환경변수를 사용하려면 서버를 시작하기 전에 다음처럼 설정합니다.
+우측 상단 `API 설정`에서 입력한 키는 현재 탭 메모리에만 있으며 파일, 쿠키, `localStorage`, `sessionStorage`에 저장하지 않습니다. 환경변수도 사용할 수 있습니다.
 
 ```bash
 export MINIMAX_API_KEY='발급받은_API_KEY'
 pnpm start
 ```
 
-API 키를 소스 코드나 Git에 추가하지 마세요.
+## 사용 순서
 
-## 사용 방법
+1. 참고 이미지 또는 시작/종료 프레임과 프롬프트를 준비합니다.
+2. 설정과 예상 비용을 확인하고 `영상 생성`을 누릅니다.
+3. 생성이 끝나면 MP4가 아래 스프라이트 단계에 자동 연결됩니다.
+4. 추출 FPS와 최대 프레임을 확인하고 `프레임 펼쳐보기`를 누릅니다.
+5. 움직임과 프레임 간격을 확인합니다.
+6. BiRefNet 모델, 셀 크기, 열 수와 출력 품질을 정한 뒤 `배경 제거하고 atlas 만들기`를 누릅니다.
+7. ZIP 전체 패키지나 필요한 개별 파일을 내려받습니다.
 
-1. `참고 이미지` 또는 `시작/종료 프레임`을 선택합니다.
-2. 로컬 이미지를 추가합니다.
-3. 프롬프트를 입력합니다.
-4. 스프라이트 원본이 필요하면 `스프라이트 일관성`을 켜고 캐릭터 높이와 발 기준선을 선택합니다.
-5. 해상도와 재생 시간을 확인합니다.
-6. 예상 비용을 확인하고 `영상 생성`을 누릅니다.
-7. 작업이 완료되면 미리보기 또는 `MP4 다운로드`를 사용합니다.
+MiniMax 생성이 필요 없다면 스프라이트 단계에서 로컬 영상을 직접 선택할 수 있습니다. 유료 MiniMax 요청, 프레임 추출, 배경 제거는 각각 사용자가 버튼을 눌렀을 때만 시작합니다.
 
-`참고 이미지` 모드에서는 기본 비율이 `1:1`입니다. `시작/종료 프레임` 모드에서는 H3 API가 입력 이미지의 비율을 사용하므로 비율 선택이 `원본 비율`로 잠깁니다.
+## 결과와 정리 정책
 
-## 스프라이트 일관성
+최종 ZIP에는 투명 프레임과 아래 산출물이 포함됩니다.
 
-옵션을 켜면 서버가 사용자가 입력한 동작 프롬프트 뒤에 다음 구도 제약을 자동으로 합칩니다.
+- `sprite-atlas.png`, `sprite-atlas.webp`
+- `sprite-manifest.json`
+- `sprite-animation.webp`, `sprite-animation.gif`
+- 투명 PNG 프레임
 
-- `[static]` 정지 카메라와 장면 전환 금지
-- 캐릭터 수평 중앙 고정
-- 캔버스 대비 캐릭터 높이 `60%`, `70%`, `80%`
-- 캔버스 높이 대비 발 기준선 `84%`, `88%`, `92%`
-- 줌, 팬, 틸트, 크롭, 재구도, 신체 비율 및 외형 변화 억제
+성공하면 작업 폴더의 중간 원본·투명 프레임을 제거합니다. MiniMax로 생성한 MP4와 최종 산출물은 유지하고, 직접 올린 영상은 최종 패키징 뒤 제거합니다. 실패한 작업의 임시 파일은 진단을 위해 남깁니다. GUI의 작업 삭제 기능으로 관련 로컬 파일을 함께 정리할 수 있습니다.
 
-참고 이미지 모드에서는 출력 비율이 `1:1`로 잠깁니다. 시작/종료 프레임 모드에서는 업로드한 프레임도 1:1이어야 합니다. 이 기능은 생성형 모델에 전달하는 프롬프트 제약이므로 픽셀 단위의 동일한 크기와 위치를 완전히 보장하지는 않습니다. 최종 스프라이트 시트에서 절대 좌표가 필요하면 생성 후 프레임 정렬과 크기 정규화 과정이 별도로 필요합니다.
+## 모델 실행 경계
 
-## 비용 표시
+BiRefNet은 Hugging Face의 아래 저장소를 고정된 40자리 revision으로 불러오며 `trust_remote_code=True`를 사용합니다.
 
-화면의 금액은 현재 공개된 H3 Pay-as-you-go 가격을 사용한 예상치입니다.
+| 저장소 | 고정 revision |
+| --- | --- |
+| `ZhengPeng7/BiRefNet_dynamic` | `280306042f57b7a33854319da62fd86aaa89ec4c` |
+| `ZhengPeng7/BiRefNet_lite` | `7838f1c3472f827cd8ce13ab5ccc2ce48077360f` |
+| `ZhengPeng7/BiRefNet-portrait` | `ecdeb6240ef23557dbd48ff27c59c1a88cbcb755` |
+| `ZhengPeng7/BiRefNet_HR-matting` | `5d6b6f8adcb5b417c871b1d84ceaae9871355b7f` |
 
-- 2K: 출력 1초당 `$0.13`
-- 768P: 출력 1초당 `$0.08`
-- 입력 이미지 처음 5장: 무료
-- 6번째 이미지부터: 장당 `$0.04`
+같은 값은 `lib/sprite-contract.mjs`와 `sprite_engine/birefnet_engine.py`에 기록되어 있습니다. revision 변경은 내려받아 실행할 외부 코드의 변경으로 보고 검토해야 합니다.
 
-실제 청구 금액은 MiniMax 계정의 사용 기록이 기준입니다.
+## 보안 경계
+
+- 서버는 `127.0.0.1`에만 바인딩합니다.
+- API 키, 참고 이미지와 Data URL을 디스크나 작업 manifest에 저장하지 않습니다.
+- manifest에는 프롬프트, 생성 설정, MiniMax 작업 ID, 로컬 상대 경로와 스프라이트 설정·결과만 저장합니다.
+- 업로드는 MP4·MOV·WebM 및 1GB 이하로 제한합니다.
+- 파일 다운로드는 해당 작업 manifest가 허용한 파일만 제공합니다.
+- MiniMax가 성공한 작업의 URL만 프록시하며 임의 원격 URL을 받지 않습니다.
+- 실제 `영상 생성`을 누르면 MiniMax 잔액이 차감될 수 있습니다.
 
 ## 검증
 
 ```bash
 pnpm check
 pnpm test
+pnpm test:sprite
 ```
 
-테스트는 MiniMax API를 모킹하므로 잔액을 사용하지 않습니다.
+테스트는 MiniMax API와 BiRefNet 추론을 모킹하므로 유료 요청이나 모델 다운로드를 만들지 않습니다.
 
-## 보안 경계
+## 라이선스
 
-- 서버는 `127.0.0.1`에만 바인딩됩니다.
-- API 키는 로깅하거나 디스크에 저장하지 않습니다.
-- 로컬 서버가 MiniMax API를 대신 호출하므로 브라우저가 MiniMax에 직접 키를 전송하지 않습니다.
-- 다운로드 프록시는 MiniMax가 성공한 작업에 반환한 URL만 사용할 수 있습니다.
-- 실제 생성 버튼을 누르면 MiniMax 잔액이 차감될 수 있습니다.
+이 프로젝트는 [MIT License](LICENSE)로 배포됩니다. BiRefNet 관련 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 확인하세요.
 
-## 공식 문서
+## MiniMax 문서
 
 - [MiniMax-H3 Video Generation](https://platform.minimax.io/docs/guides/video-generation)
 - [MiniMax-H3 V2 API](https://platform.minimax.io/docs/api-reference/video-generation-v2-create)

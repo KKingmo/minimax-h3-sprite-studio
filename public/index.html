@@ -5,17 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#101216" />
-    <title>MiniMax H3 Studio</title>
-    <link rel="stylesheet" href="/styles.css?v=3" />
-    <script type="module" src="/app.js?v=3"></script>
+    <title>MiniMax H3 Sprite Studio</title>
+    <link rel="stylesheet" href="/styles.css?v=4" />
+    <script type="module" src="/app.js?v=4"></script>
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/" aria-label="MiniMax H3 Studio 홈">
-        <span class="brand-mark" aria-hidden="true">H3</span>
+      <a class="brand" href="/" aria-label="MiniMax H3 Sprite Studio 홈">
+        <span class="brand-mark" aria-hidden="true">H3/S</span>
         <span>
-          <strong>MiniMax H3 Studio</strong>
-          <small>로컬 비디오 생성기</small>
+          <strong>MiniMax H3 Sprite Studio</strong>
+          <small>영상 생성 · 투명 sprite atlas 내보내기</small>
         </span>
       </a>
 
@@ -35,8 +35,8 @@
       <section class="composer panel" aria-labelledby="composer-title">
         <div class="panel-heading">
           <div>
-            <p class="eyebrow">MiniMax-H3 · Image to Video</p>
             <h1 id="composer-title">영상 만들기</h1>
+            <p class="heading-copy">MiniMax-H3 · Image to Video</p>
           </div>
           <span class="local-badge">127.0.0.1 전용</span>
         </div>
@@ -203,8 +203,8 @@
       <section class="result panel" aria-labelledby="result-title">
         <div class="panel-heading result-heading">
           <div>
-            <p class="eyebrow">Result</p>
             <h2 id="result-title">미리보기</h2>
+            <p class="heading-copy">생성 상태와 MP4 결과</p>
           </div>
           <span class="result-status" id="result-status">준비됨</span>
         </div>
@@ -245,8 +245,8 @@
       <section class="history panel" aria-labelledby="history-title">
         <div class="history-heading">
           <div>
-            <p class="eyebrow">Current tab</p>
-            <h2 id="history-title">작업 기록</h2>
+            <h2 id="history-title">영상 생성 기록</h2>
+            <p class="heading-copy">현재 탭에서 요청한 MiniMax 작업</p>
           </div>
           <p>새로고침하면 목록이 사라져.</p>
         </div>
@@ -270,14 +270,153 @@
           </table>
         </div>
       </section>
+
+      <div class="pipeline-transition" role="note">
+        <span aria-hidden="true"></span>
+        <strong>완성된 MP4가 다음 단계의 입력으로 자동 연결됩니다.</strong>
+        <small>프레임 추출과 atlas 생성은 확인 후 직접 시작합니다.</small>
+      </div>
+
+      <section class="sprite-workbench panel" aria-labelledby="sprite-workbench-title">
+        <div class="sprite-workbench-heading">
+          <div>
+            <h2 id="sprite-workbench-title">Sprite atlas 내보내기</h2>
+            <p>연결된 H3 영상 또는 로컬 영상을 프레임으로 확인하고 투명 atlas 패키지로 만듭니다.</p>
+          </div>
+          <span class="engine-status" id="sprite-engine-status">엔진 확인 중</span>
+        </div>
+
+        <div class="sprite-source-layout">
+          <div class="sprite-source-pane">
+            <div class="sprite-video-stage">
+              <div class="sprite-video-empty" id="sprite-video-empty">
+                <svg aria-hidden="true" viewBox="0 0 64 64"><path d="M10 16h32v32H10z"/><path d="m42 26 12-7v26l-12-7Z"/><path d="M18 25h16M18 32h16M18 39h10"/></svg>
+                <strong>변환할 영상을 연결해 주세요</strong>
+                <span>MiniMax 생성이 끝나면 자동으로 연결되며, 로컬 영상으로 교체할 수도 있습니다.</span>
+              </div>
+              <video id="sprite-source-video" controls playsinline hidden></video>
+            </div>
+            <div class="sprite-source-actions">
+              <label class="quiet-button file-button" for="sprite-video-input">로컬 영상 선택</label>
+              <input class="visually-hidden" id="sprite-video-input" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" />
+              <button class="icon-text-button" id="clear-sprite-source" type="button" disabled>입력 비우기</button>
+            </div>
+            <p class="sprite-video-meta" id="sprite-video-meta">MP4, MOV, WebM · 최대 1GB</p>
+            <p class="engine-setup-note" id="sprite-engine-note">최초 한 번 <code>pnpm setup:sprite</code>를 실행해야 합니다.</p>
+          </div>
+
+          <div class="sprite-settings-pane">
+            <div class="sprite-setting-grid">
+              <label class="sprite-setting">
+                <span>추출 FPS <output id="sprite-fps-value">15</output></span>
+                <input id="sprite-fps" type="range" min="1" max="30" step="1" value="15" />
+              </label>
+              <label class="sprite-setting">
+                <span>최대 프레임 <output id="sprite-max-frames-value">120</output></span>
+                <input id="sprite-max-frames" type="range" min="2" max="240" step="1" value="120" />
+              </label>
+              <label class="sprite-setting sprite-setting-wide">
+                <span>BiRefNet 모델</span>
+                <select id="sprite-model"></select>
+                <small id="sprite-model-note"></small>
+              </label>
+              <label class="sprite-check sprite-setting-wide">
+                <input id="sprite-refine-edges" type="checkbox" checked />
+                <span><strong>가장자리 색 번짐 정리</strong><small>반투명 경계를 공식 BiRefNet 방식으로 정제합니다.</small></span>
+              </label>
+              <label class="sprite-setting">
+                <span>정사각 셀 크기</span>
+                <select id="sprite-cell-size"></select>
+              </label>
+              <label class="sprite-setting">
+                <span>atlas 열 수 <output id="sprite-columns-value">10</output></span>
+                <input id="sprite-columns" type="range" min="1" max="20" step="1" value="10" />
+              </label>
+              <label class="sprite-setting">
+                <span>WebP 품질 <output id="sprite-webp-quality-value">80</output></span>
+                <input id="sprite-webp-quality" type="range" min="20" max="95" step="1" value="80" />
+              </label>
+              <label class="sprite-setting">
+                <span>GIF 색상 수</span>
+                <select id="sprite-gif-colors">
+                  <option value="64">64색</option>
+                  <option value="128" selected>128색</option>
+                  <option value="256">256색</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="sprite-run-actions">
+              <button class="quiet-button action-button" id="extract-sprite-button" type="button" disabled>프레임 펼쳐보기</button>
+              <button class="primary-button action-button" id="export-sprite-button" type="button" disabled>배경 제거하고 atlas 만들기</button>
+            </div>
+            <p class="sprite-process-status" id="sprite-process-status" role="status" aria-live="polite">영상을 연결하면 프레임 추출을 시작할 수 있습니다.</p>
+          </div>
+        </div>
+
+        <div class="sprite-frame-review" id="sprite-frame-review">
+          <div class="sprite-review-heading">
+            <div>
+              <h3>프레임 확인</h3>
+              <p id="sprite-frame-summary">프레임을 펼치면 움직임과 간격을 확인할 수 있습니다.</p>
+            </div>
+          </div>
+          <div class="sprite-frame-layout">
+            <div class="sprite-motion-preview">
+              <span>움직임 미리보기</span>
+              <button class="sprite-preview-toggle" id="toggle-sprite-motion" type="button" disabled>미리보기 재생</button>
+              <img id="sprite-preview-gif" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="추출한 영상 프레임의 GIF 미리보기" hidden />
+              <p id="sprite-preview-empty">아직 미리보기가 없습니다.</p>
+            </div>
+            <div class="sprite-frame-strip" id="sprite-frame-strip" aria-label="추출 프레임">
+              <p>추출된 프레임이 여기에 표시됩니다.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sprite-export-result" id="sprite-export-result">
+          <div class="sprite-review-heading">
+            <div>
+              <h3>최종 패키지</h3>
+              <p id="sprite-result-summary">atlas를 만들면 투명 기준본과 미리보기를 한곳에서 내려받을 수 있습니다.</p>
+            </div>
+          </div>
+          <div class="sprite-result-previews">
+            <figure><span>Sprite atlas</span><img id="sprite-atlas-preview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="투명 WebP sprite atlas" hidden /><p>결과 없음</p></figure>
+            <figure><span>Animated WebP</span><button class="sprite-preview-toggle" type="button" data-preview-target="sprite-webp-preview" disabled>미리보기 재생</button><img id="sprite-webp-preview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="투명 WebP 스프라이트 애니메이션" hidden /><p>결과 없음</p></figure>
+            <figure><span>GIF preview</span><button class="sprite-preview-toggle" type="button" data-preview-target="sprite-gif-preview" disabled>미리보기 재생</button><img id="sprite-gif-preview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="최적화된 GIF 스프라이트 애니메이션" hidden /><p>결과 없음</p></figure>
+          </div>
+          <div class="sprite-downloads" id="sprite-downloads"></div>
+        </div>
+      </section>
+
+      <section class="sprite-history panel" aria-labelledby="sprite-history-title">
+        <div class="history-heading">
+          <div>
+            <h2 id="sprite-history-title">로컬 스프라이트 작업</h2>
+            <p class="heading-copy">새로고침 후에도 이어지는 로컬 manifest 기록</p>
+          </div>
+          <button class="quiet-button" id="clear-sprite-jobs" type="button" disabled>모든 작업 정리</button>
+        </div>
+        <div class="history-table-wrap">
+          <table>
+            <thead><tr><th scope="col">상태</th><th scope="col">입력</th><th scope="col">설정</th><th scope="col">작업 ID</th><th scope="col"><span class="visually-hidden">작업</span></th></tr></thead>
+            <tbody id="sprite-history-body"><tr class="empty-row"><td colspan="5">아직 연결한 영상이 없습니다.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
     </main>
+
+    <footer class="site-note">
+      MiniMax 공식 제품이 아닌 로컬 오픈소스 도구입니다. API 키와 참고 이미지는 디스크에 저장하지 않습니다.
+    </footer>
 
     <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
       <form method="dialog">
         <div class="dialog-heading">
           <div>
-            <p class="eyebrow">Local only</p>
             <h2 id="settings-title">API 설정</h2>
+            <p class="heading-copy">현재 탭에서만 사용하는 MiniMax 인증</p>
           </div>
           <button class="icon-button" value="cancel" aria-label="설정 닫기">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
