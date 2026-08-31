@@ -12,6 +12,16 @@ from birefnet_engine import MODEL_PRESETS, BiRefNetEngine
 from sprite_pipeline import build_exports, build_motion_preview_gif, extract_frames, probe_video
 
 
+def _report_progress(value: float, description: str) -> None:
+    event = {
+        "type": "progress",
+        "value": max(0.0, min(1.0, float(value))),
+        "description": str(description),
+    }
+    sys.stderr.write("SPRITE_PROGRESS " + json.dumps(event, ensure_ascii=False) + "\n")
+    sys.stderr.flush()
+
+
 def _inside(path_value: str | Path, root: Path) -> Path:
     path = Path(path_value).resolve()
     if path != root and root not in path.parents:
@@ -52,12 +62,20 @@ def extract_video(payload: dict, workspace: Path) -> dict:
         output_root=extraction_root,
         target_fps=payload["targetFps"],
         max_frames=payload["maxFrames"],
+        progress=lambda value, description: _report_progress(
+            0.02 + value * 0.76,
+            description,
+        ),
     )
     extraction_dir = _inside(extracted["job_dir"], job_dir)
     preview_path = build_motion_preview_gif(
         frame_paths=extracted["frame_paths"],
         output_dir=extraction_dir / "preview",
         sample_fps=float(extracted["sample_fps"]),
+        progress=lambda value, description: _report_progress(
+            0.78 + value * 0.22,
+            description,
+        ),
     )
     return {
         "sourceVideoName": extracted["source_video_name"],
@@ -95,6 +113,10 @@ def export_sprite(payload: dict, workspace: Path) -> dict:
         output_dir=cutout_dir,
         model_name=str(payload["modelName"]),
         refine_edges=bool(payload["refineEdges"]),
+        progress=lambda value, description: _report_progress(
+            0.01 + value * 0.69,
+            description,
+        ),
     )
     exported = build_exports(
         frame_paths=batch.output_paths,
@@ -106,6 +128,10 @@ def export_sprite(payload: dict, workspace: Path) -> dict:
         columns=payload["columns"],
         webp_quality=payload["webpQuality"],
         gif_colors=payload["gifColors"],
+        progress=lambda value, description: _report_progress(
+            0.70 + value * 0.30,
+            description,
+        ),
     )
 
     result = {

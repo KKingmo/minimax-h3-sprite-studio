@@ -350,6 +350,14 @@
               <button class="quiet-button action-button" id="extract-sprite-button" type="button" disabled>프레임 펼쳐보기</button>
               <button class="primary-button action-button" id="export-sprite-button" type="button" disabled>배경 제거하고 atlas 만들기</button>
             </div>
+            <div class="sprite-progress" id="sprite-progress" hidden>
+              <div class="sprite-progress-heading">
+                <strong id="sprite-progress-stage">프레임 추출 중</strong>
+                <output id="sprite-progress-value" for="sprite-progress-bar">0%</output>
+              </div>
+              <progress id="sprite-progress-bar" max="100" value="0" aria-labelledby="sprite-progress-stage" aria-describedby="sprite-progress-elapsed sprite-process-status">0%</progress>
+              <span class="sprite-progress-elapsed" id="sprite-progress-elapsed">경과 0초</span>
+            </div>
             <p class="sprite-process-status" id="sprite-process-status" role="status" aria-live="polite">영상을 연결하면 프레임 추출을 시작할 수 있습니다.</p>
           </div>
         </div>

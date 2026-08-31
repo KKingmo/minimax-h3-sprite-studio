@@ -20,6 +20,7 @@ const state = {
     jobs: [],
     activeJobId: null,
     busy: false,
+    operation: null,
   },
 };
 
@@ -91,6 +92,11 @@ const elements = {
   extractSpriteButton: document.querySelector("#extract-sprite-button"),
   exportSpriteButton: document.querySelector("#export-sprite-button"),
   spriteProcessStatus: document.querySelector("#sprite-process-status"),
+  spriteProgress: document.querySelector("#sprite-progress"),
+  spriteProgressStage: document.querySelector("#sprite-progress-stage"),
+  spriteProgressValue: document.querySelector("#sprite-progress-value"),
+  spriteProgressBar: document.querySelector("#sprite-progress-bar"),
+  spriteProgressElapsed: document.querySelector("#sprite-progress-elapsed"),
   spriteFrameSummary: document.querySelector("#sprite-frame-summary"),
   spritePreviewGif: document.querySelector("#sprite-preview-gif"),
   toggleSpriteMotion: document.querySelector("#toggle-sprite-motion"),
@@ -651,6 +657,50 @@ function toggleAnimatedPreview(image, button) {
   }
 }
 
+function spriteProgressStage(stage, value) {
+  if (stage === "extract") return value < 0.78 ? "영상 프레임 추출" : "움직임 미리보기 생성";
+  return value < 0.70 ? "BiRefNet 배경 제거" : "atlas 패키지 생성";
+}
+
+function formatElapsed(startedAt) {
+  const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1_000));
+  if (seconds < 60) return `경과 ${seconds}초`;
+  const minutes = Math.floor(seconds / 60);
+  return `경과 ${minutes}분 ${String(seconds % 60).padStart(2, "0")}초`;
+}
+
+function renderSpriteOperationStatus(job = activeSpriteJob()) {
+  const operation = state.atlas.operation;
+  const running = Boolean(operation && job?.id === operation.jobId && state.atlas.busy);
+  const stage = operation?.stage;
+  const progress = running && job?.progress?.stage === stage ? job.progress : null;
+  if (progress) {
+    operation.lastProgress = Math.max(0, Math.min(1, Number(progress.value) || 0));
+    operation.lastDescription = progress.description;
+  } else if (running && ["frames-ready", "complete"].includes(job?.status)) {
+    operation.lastProgress = 1;
+  }
+  const value = operation?.lastProgress ?? 0;
+  const percent = Math.round(value * 100);
+
+  elements.extractSpriteButton.classList.toggle("is-loading", running && stage === "extract");
+  elements.exportSpriteButton.classList.toggle("is-loading", running && stage === "export");
+  elements.extractSpriteButton.setAttribute("aria-busy", String(running && stage === "extract"));
+  elements.exportSpriteButton.setAttribute("aria-busy", String(running && stage === "export"));
+  elements.extractSpriteButton.textContent = running && stage === "extract" ? `프레임 추출 중 · ${percent}%` : "프레임 펼쳐보기";
+  elements.exportSpriteButton.textContent = running && stage === "export" ? `atlas 생성 중 · ${percent}%` : "배경 제거하고 atlas 만들기";
+  elements.spriteProgress.hidden = !running;
+  if (!running) return;
+
+  elements.spriteProgressStage.textContent = spriteProgressStage(stage, value);
+  elements.spriteProgressValue.textContent = `${percent}%`;
+  elements.spriteProgressBar.value = percent;
+  elements.spriteProgressBar.textContent = `${percent}%`;
+  elements.spriteProgressElapsed.textContent = formatElapsed(operation.startedAt);
+  elements.spriteProcessStatus.textContent = operation.lastDescription
+    || (stage === "export" ? "BiRefNet 배경 제거를 시작하고 있습니다." : "영상 프레임 추출을 시작하고 있습니다.");
+}
+
 function renderActiveSpriteJob({ preserveSettings = false } = {}) {
   const job = activeSpriteJob();
   resetSpriteMedia();
@@ -659,6 +709,9 @@ function renderActiveSpriteJob({ preserveSettings = false } = {}) {
     elements.clearSpriteSource.disabled = true;
     elements.extractSpriteButton.disabled = true;
     elements.exportSpriteButton.disabled = true;
+    elements.spriteProgress.hidden = true;
+    elements.extractSpriteButton.textContent = "프레임 펼쳐보기";
+    elements.exportSpriteButton.textContent = "배경 제거하고 atlas 만들기";
     elements.spriteProcessStatus.textContent = "영상을 연결하면 프레임 추출을 시작할 수 있습니다.";
     return;
   }
@@ -688,6 +741,7 @@ function renderActiveSpriteJob({ preserveSettings = false } = {}) {
       complete: "최종 atlas 패키지가 준비됐습니다.",
       error: "문제를 확인한 뒤 같은 단계를 다시 실행할 수 있습니다.",
     }[job.status] || SPRITE_STATUS_LABELS[job.status] || "작업을 준비하고 있습니다.";
+  renderSpriteOperationStatus(job);
 
   if (job.extraction) {
     elements.spriteFrameSummary.textContent = `${job.extraction.frameCount ?? job.extraction.frameUrls?.length ?? 0}프레임 · ${Number(job.extraction.sampleFps).toFixed(2)} FPS · 약 ${Number(job.extraction.sampledDurationSeconds).toFixed(2)}초`;
@@ -848,24 +902,81 @@ async function uploadSpriteVideo(file) {
   }
 }
 
+function startSpriteOperation(jobId, stage) {
+  const operation = {
+    jobId,
+    stage,
+    startedAt: Date.now(),
+    controller: new AbortController(),
+    elapsedTimer: null,
+    lastProgress: 0,
+    lastDescription: stage === "export" ? "BiRefNet 배경 제거를 시작하고 있습니다." : "영상 프레임 추출을 시작하고 있습니다.",
+  };
+  operation.elapsedTimer = window.setInterval(() => renderSpriteOperationStatus(), 1_000);
+  return operation;
+}
+
+function stopSpriteOperation() {
+  const operation = state.atlas.operation;
+  if (!operation) return;
+  window.clearInterval(operation.elapsedTimer);
+  operation.controller.abort();
+  state.atlas.operation = null;
+}
+
+async function pollSpriteOperation(jobId, signal) {
+  let failures = 0;
+  await delay(350, signal).catch(() => undefined);
+  while (!signal.aborted) {
+    try {
+      const body = await requestJson(`/api/sprite/jobs/${encodeURIComponent(jobId)}`, { signal });
+      if (signal.aborted) return;
+      if (body.job) {
+        upsertSpriteJob(body.job);
+        renderSpriteOperationStatus(body.job);
+      }
+      failures = 0;
+      await delay(650, signal);
+    } catch (error) {
+      if (error.name === "AbortError" || signal.aborted) return;
+      failures += 1;
+      const operation = state.atlas.operation;
+      if (operation?.jobId === jobId) {
+        operation.lastDescription = "진행 상태 연결을 다시 확인하고 있습니다.";
+        renderSpriteOperationStatus();
+      }
+      await delay(Math.min(3_000, 650 * (2 ** failures)), signal).catch(() => undefined);
+    }
+  }
+}
+
 async function extractSpriteFrames() {
   const job = activeSpriteJob();
   if (!job) return;
   state.atlas.busy = true;
+  state.atlas.operation = startSpriteOperation(job.id, "extract");
   job.status = "extracting";
+  job.progress = { stage: "extract", value: 0, description: "프레임 추출을 시작하고 있습니다." };
   renderSpriteWorkspace({ preserveSettings: true });
+  const polling = pollSpriteOperation(job.id, state.atlas.operation.controller.signal);
   try {
     const body = await requestJson(`/api/sprite/jobs/${encodeURIComponent(job.id)}/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(spriteSettings()),
     });
+    stopSpriteOperation();
+    await polling;
     upsertSpriteJob(body.job);
     showToast("프레임과 움직임 미리보기를 준비했습니다.");
   } catch (error) {
+    stopSpriteOperation();
+    await polling;
     showToast(error.message);
     await loadSpriteJobs().catch(() => undefined);
   } finally {
+    stopSpriteOperation();
+    await polling;
     state.atlas.busy = false;
     renderSpriteWorkspace({ preserveSettings: true });
   }
@@ -875,20 +986,29 @@ async function exportSpriteAtlas() {
   const job = activeSpriteJob();
   if (!job) return;
   state.atlas.busy = true;
+  state.atlas.operation = startSpriteOperation(job.id, "export");
   job.status = "exporting";
+  job.progress = { stage: "export", value: 0, description: "BiRefNet 배경 제거를 시작하고 있습니다." };
   renderSpriteWorkspace({ preserveSettings: true });
+  const polling = pollSpriteOperation(job.id, state.atlas.operation.controller.signal);
   try {
     const body = await requestJson(`/api/sprite/jobs/${encodeURIComponent(job.id)}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(spriteSettings()),
     });
+    stopSpriteOperation();
+    await polling;
     upsertSpriteJob(body.job);
     showToast("투명 sprite atlas 패키지를 완성했습니다.");
   } catch (error) {
+    stopSpriteOperation();
+    await polling;
     showToast(error.message);
     await loadSpriteJobs().catch(() => undefined);
   } finally {
+    stopSpriteOperation();
+    await polling;
     state.atlas.busy = false;
     renderSpriteWorkspace({ preserveSettings: true });
   }
@@ -1228,6 +1348,7 @@ function bindEvents() {
   });
 
   window.addEventListener("beforeunload", () => {
+    stopSpriteOperation();
     for (const controller of state.pollControllers.values()) controller.abort();
     for (const image of state.referenceImages) disposeImage(image);
     disposeImage(state.frames.first);

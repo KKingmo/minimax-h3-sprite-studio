@@ -168,3 +168,64 @@ test("extracting again invalidates an older atlas result", async (t) => {
   assert.equal(extractedAgain.result, null);
   assert.equal(extractedAgain.extraction.sampleFps, 8);
 });
+
+test("engine progress is persisted while a sprite operation is running", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "minimax-sprite-progress-test-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const pythonPath = join(root, "python");
+  const workerPath = join(root, "worker.py");
+  await writeFile(pythonPath, "mock");
+  await writeFile(workerPath, "mock");
+
+  let reportReady;
+  const reported = new Promise((resolve) => { reportReady = resolve; });
+  let releaseRunner;
+  const runnerGate = new Promise((resolve) => { releaseRunner = resolve; });
+  const pythonRunner = async ({ action, payload, onProgress }) => {
+    assert.equal(action, "extract");
+    await onProgress({ value: 0.42, description: "프레임 5/12을 펼치고 있어요" });
+    reportReady();
+    await runnerGate;
+    return {
+      sourceVideoName: "clip.mp4",
+      sourceVideoBytes: 5,
+      sourceSize: [640, 640],
+      sourceFps: 24,
+      sourceFrameCount: 48,
+      sourceDurationSeconds: 2,
+      sampleFps: payload.targetFps,
+      sampledDurationSeconds: 2,
+      framePaths: [],
+      frameTimes: [],
+      previewPath: null,
+    };
+  };
+  const workspace = createSpriteWorkspace({
+    rootDir: join(root, "workspace"),
+    pythonPath,
+    workerPath,
+    pythonRunner,
+    now: () => new Date("2026-08-10T03:00:00.000Z"),
+  });
+  const created = await workspace.createJob({ type: "upload", filename: "clip.mp4" });
+  await workspace.writeVideo(created.id, [Buffer.from("video")], { contentLength: 5 });
+
+  const extraction = workspace.extract(created.id, { targetFps: 12, maxFrames: 24 });
+  await reported;
+  const running = await workspace.getJob(created.id);
+  assert.equal(running.status, "extracting");
+  assert.deepEqual(running.progress, {
+    stage: "extract",
+    value: 0.42,
+    description: "프레임 5/12을 펼치고 있어요",
+    startedAt: "2026-08-10T03:00:00.000Z",
+  });
+  const [listedWhileRunning] = await workspace.listJobs();
+  assert.equal(listedWhileRunning.status, "extracting");
+  assert.equal(listedWhileRunning.progress.value, 0.42);
+
+  releaseRunner();
+  const completed = await extraction;
+  assert.equal(completed.status, "frames-ready");
+  assert.equal(completed.progress, null);
+});

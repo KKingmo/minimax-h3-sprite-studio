@@ -1570,6 +1570,83 @@ code {
   min-height: 44px;
 }
 
+.action-button.is-loading::before {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  content: "";
+  animation: spin 0.8s linear infinite;
+}
+
+.sprite-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+
+.sprite-progress-heading {
+  display: contents;
+}
+
+.sprite-progress-heading strong,
+.sprite-progress-heading output,
+.sprite-progress-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+.sprite-progress-heading strong {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sprite-progress-heading output {
+  color: var(--accent-bright);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.sprite-progress progress {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  grid-column: 1 / -1;
+  appearance: none;
+  background: #2a2f38;
+}
+
+.sprite-progress progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: #2a2f38;
+}
+
+.sprite-progress progress::-webkit-progress-value {
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.sprite-progress progress::-moz-progress-bar {
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.sprite-progress-elapsed {
+  grid-column: 2;
+  color: var(--faint);
+  font-size: 10px;
+  text-align: right;
+}
+
 .sprite-process-status {
   min-height: 34px;
   text-align: right;
@@ -1925,6 +2002,10 @@ code {
 
   .sprite-process-status {
     text-align: left;
+  }
+
+  .sprite-progress {
+    margin-top: 12px;
   }
 
   .sprite-frame-strip {
